@@ -1,0 +1,6 @@
+AAAAABBBBBCCCCC
+This is a test file for Huffman Compression in MIPS.
+It contains repetitions to ensure the algorithm works.
+EEEEEEEEDDDDDDDD
+1234512345
+End of file.
