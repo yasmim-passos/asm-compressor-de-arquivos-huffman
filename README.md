@@ -1,20 +1,20 @@
 # MIPS Huffman Compressor
 
-A professional-grade file compression tool written in MIPS Assembly for the MARS simulator.
+Uma ferramenta profissional de compressão de arquivos escrita em MIPS Assembly para o simulador MARS.
 
-## Features
-- **Huffman Compression**: Efficiently compresses text files using Huffman coding.
-- **Pseudo-GUI Interface**: A clean, text-based interface mimicking professional terminal tools.
-- **Visual Feedback**: Animated progress bars and detailed processing logs.
-- **Statistics**: View original vs compressed sizes and compression ratios.
-- **Table Viewer**: Visualize the Huffman code table generated for the file.
+## Funcionalidades
+- **Compressão Huffman**: Comprime eficientemente arquivos de texto usando codificação Huffman.
+- **Interface Pseudo-GUI**: Uma interface de texto limpa que imita ferramentas de terminal profissionais.
+- **Feedback Visual**: Barras de progresso animadas e logs detalhados de processamento.
+- **Estatísticas**: Visualize o tamanho original vs comprimido e a taxa de compressão.
+- **Visualizador de Tabela**: Visualize a tabela de códigos Huffman gerada para o arquivo.
 
-## Usage
-1.  Open `main.asm` in MARS MIPS Simulator.
-2.  Ensure "Initialize Program Counter to global 'main' if defined" is checked in Settings.
-3.  Assemble and Run.
-4.  Follow the on-screen menu to compress or decompress files.
+## Uso
+1.  Abra `main.asm` no Simulador MARS MIPS.
+2.  Certifique-se de que a opção "Initialize Program Counter to global 'main' if defined" esteja marcada nas Configurações.
+3.  Monte (Assemble) e Execute (Run).
+4.  Siga o menu na tela para comprimir ou descomprimir arquivos.
 
-## Limits
-- Designed for text files within simulator memory limits.
-- Maximum file size: ~10KB (buffer limit).
+## Limites
+- Projetado para arquivos de texto dentro dos limites de memória do simulador.
+- Tamanho máximo do arquivo: ~10KB (limite do buffer).
