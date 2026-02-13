@@ -29,6 +29,17 @@ output_filename: .asciiz "out.huff"
 str_done:       .asciiz "\nConcluido!\n"
 str_pause:      .asciiz "\nPressione Enter para continuar..."
 str_about_text: .asciiz "Huffman Compressor v1.0\nDesenvolvido em MIPS Assembly.\nAlgoritmo de compressao sem perdas.\n"
+str_table_header: .asciiz "Char | Freq | Codigo\n--------------------\n"
+str_tab:        .asciiz "\t| "
+str_stats_header: .asciiz "     ESTATISTICAS     \n"
+str_orig_size:  .asciiz "Tamanho Original  : "
+str_comp_size:  .asciiz "Tamanho Comprimido: "
+str_ratio:      .asciiz "Taxa de Compressao: "
+str_bytes:      .asciiz " bytes\n"
+
+# Vars
+stat_orig_size: .word 0
+stat_comp_size: .word 0
 
 .text
 .globl main
@@ -158,6 +169,9 @@ opt_compress:
     move $t9, $v0 # Salvar tamanho comprimido para escrita
     move $s6, $v0 # Salvar para estatisticas
     
+    sw $s7, stat_orig_size
+    sw $s6, stat_comp_size
+    
     # Escrever Arquivo
     jal write_file 
 
@@ -234,17 +248,189 @@ opt_decompress:
     
     j wait_enter
 
+
 opt_view_table:
+    # Mostrar Cabecalho da Tabela
     li $v0, 4
-    la $a0, str_processing
+    la $a0, str_newline
     syscall
+    la $a0, str_table_header
+    syscall
+    
+    # Iterar sobre huffman_codes e imprimir
+    la $t0, huffman_codes
+    li $t1, 0 # char index
+    
+table_loop:
+    beq $t1, 256, table_end
+    
+    # Carregar comprimento
+    mul $t2, $t1, 8
+    add $t2, $t2, $t0
+    lw $t3, 0($t2) # length
+    
+    # Se comprimento > 0, imprimir
+    blez $t3, next_table_char
+    
+    # Imprimir Char (se for imprimivel) OU Hex
+    # Por simplicidade, imprimir Int do Char
+    
+    # Imprimir Char Formatado
+    li $v0, 11
+    li $a0, '|'
+    syscall
+    
+    li $v0, 11
+    li $a0, ' '
+    syscall
+    
+    # Se for quebra de linha (10) ou espaco?
+    # Vamos imprimir o valor inteiro para clareza em todos os casos
+    li $v0, 1
+    move $a0, $t1
+    syscall
+    
+    li $v0, 4
+    la $a0, str_tab
+    syscall
+    
+    # Imprimir Frequencia
+    la $t4, frequency_table
+    mul $t5, $t1, 4
+    add $t5, $t5, $t4
+    lw $a0, 0($t5)
+    li $v0, 1
+    syscall
+    
+    li $v0, 4
+    la $a0, str_tab
+    syscall
+    
+    # Imprimir Codigo Binario
+    # O codigo esta em 4($t2)
+    lw $t6, 4($t2) # Codigo
+    move $a0, $t6
+    move $a1, $t3 # Comprimento
+    jal print_binary_code
+    
+    li $v0, 4
+    la $a0, str_newline
+    syscall
+    
+next_table_char:
+    addi $t1, $t1, 1
+    j table_loop
+    
+table_end:
     j wait_enter
 
 opt_stats:
     li $v0, 4
-    la $a0, str_processing
+    la $a0, str_newline
+    syscall
+    la $a0, str_separator
+    syscall
+    la $a0, str_stats_header
+    syscall
+    la $a0, str_separator
+    syscall
+    
+    # Tamanho Original
+    li $v0, 4
+    la $a0, str_orig_size
+    syscall
+    
+    li $v0, 1
+    lw $a0, stat_orig_size
+    syscall
+    
+    li $v0, 4
+    la $a0, str_bytes
+    syscall
+    
+    # Tamanho Comprimido
+    li $v0, 4
+    la $a0, str_comp_size
+    syscall
+    
+    li $v0, 1
+    lw $a0, stat_comp_size
+    syscall
+    
+    li $v0, 4
+    la $a0, str_bytes
+    syscall
+    
+    # Taxa de Compressao
+    # Formula: 100 - (compressed * 100 / original)
+    lw $t0, stat_orig_size
+    lw $t1, stat_comp_size
+    
+    blez $t0, skip_ratio # Evitar divisao por zero
+    
+    mul $t2, $t1, 100
+    div $t2, $t0
+    mflo $t3 # % do original
+    
+    li $t4, 100
+    sub $t5, $t4, $t3 # % economia
+    
+    li $v0, 4
+    la $a0, str_ratio
+    syscall
+    
+    li $v0, 1
+    move $a0, $t5
+    syscall
+    
+    li $v0, 11
+    li $a0, '%'
+    syscall
+    
+    li $v0, 4
+    la $a0, str_newline
+    syscall
+    
+skip_ratio:
+    la $a0, str_separator
     syscall
     j wait_enter
+
+# Helper to print binary code
+# $a0 = code, $a1 = length
+print_binary_code:
+    move $t8, $a0
+    move $t9, $a1
+    
+    # Start loop from len-1 down to 0
+    addi $t9, $t9, -1
+    
+print_bin_loop:
+    bltz $t9, print_bin_end
+    
+    # Check bit
+    li $t7, 1
+    sllv $t7, $t7, $t9
+    and $t7, $t7, $t8
+    
+    beqz $t7, print_zero
+    
+    li $v0, 11
+    li $a0, '1'
+    syscall
+    j next_bit_print
+    
+print_zero:
+    li $v0, 11
+    li $a0, '0'
+    syscall
+    
+next_bit_print:
+    addi $t9, $t9, -1
+    j print_bin_loop
+    
+print_bin_end:
+    jr $ra
 
 opt_about:
     # Tela Sobre
