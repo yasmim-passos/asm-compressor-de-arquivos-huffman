@@ -23,16 +23,18 @@ str_prompt:     .asciiz "Escolha: "
 str_invalid:    .asciiz "Opcao invalida! Tente novamente.\n"
 str_err_file:   .asciiz "Erro ao abrir arquivo!\n"
 str_exit:       .asciiz "Saindo... Ate logo!\n"
-str_input_file: .asciiz "Digite o arquivo de entrada: "
+str_input_file: .asciiz "Digite o caminho do arquivo de entrada: "
 str_processing: .asciiz "\nProcessando...\n"
-output_filename: .asciiz "out.huff"
+output_filename_huff: .asciiz "out.huff"
+output_filename_txt:  .asciiz "out.txt"
+str_err_write:      .asciiz "Erro ao escrever arquivo!\n"
 str_done:       .asciiz "\nConcluido!\n"
 str_pause:      .asciiz "\nPressione Enter para continuar..."
 str_about_text: .asciiz "Huffman Compressor v1.0\nDesenvolvido em MIPS Assembly.\nAlgoritmo de compressao sem perdas.\n"
 str_table_header: .asciiz "Char | Freq | Codigo\n--------------------\n"
 str_tab:        .asciiz "\t| "
 str_stats_header: .asciiz "     ESTATISTICAS     \n"
-str_orig_size:  .asciiz "Tamanho Original  : "
+str_orig_size:  .asciiz "Tamanho Original: "
 str_comp_size:  .asciiz "Tamanho Comprimido: "
 str_ratio:      .asciiz "Taxa de Compressao: "
 str_bytes:      .asciiz " bytes\n"
@@ -41,12 +43,14 @@ str_bytes:      .asciiz " bytes\n"
 stat_orig_size: .word 0
 stat_comp_size: .word 0
 
+output_path_buffer: .space 256
+str_input_folder:   .asciiz "\n\nDigite o caminho da pasta de saida (Enter para local atual): "
+str_slash:          .asciiz "\\"
+
 .text
 .globl main
 
-# --------------------------------------------------------------------------------------------------
 # LOOP DO MENU PRINCIPAL
-# --------------------------------------------------------------------------------------------------
 main:
     # Limpar tela (imprimir novas linhas)
     li $v0, 4
@@ -122,9 +126,7 @@ main:
     j wait_enter
 
 
-# --------------------------------------------------------------------------------------------------
 # MANIPULADORES DE OPCAO
-# --------------------------------------------------------------------------------------------------
 opt_compress:
     # Limpar tela
     li $v0, 4
@@ -173,6 +175,10 @@ opt_compress:
     sw $s6, stat_comp_size
     
     # Escrever Arquivo
+    la $a0, output_filename_huff
+    jal prompt_output_folder
+    move $a0, $v0 # Passar caminho completo para write_file
+    move $t9, $s6 # Restaurar tamanho (pois t9 foi alterado)
     jal write_file 
 
     li $v0, 4
@@ -214,7 +220,7 @@ opt_decompress:
     move $a0, $s7
     jal decompress_data
     
-    move $t9, $v0 # Tamanho descomprimido
+    move $s6, $v0 # Salvar tamanho descomprimido em s6
     
     # Escrever Saida (nome fixo 'out.txt')
     # Usar buffer output_filename mas mudar conteudo?
@@ -223,23 +229,10 @@ opt_decompress:
     # Ou apenas usar 'out.huff' mas isso e confuso.
     # Vamos atualizar output_filename para "out.txt" manualmente na memoria?
     
-    la $t0, output_filename
-    li $t1, 'o'
-    sb $t1, 0($t0)
-    li $t1, 'u'
-    sb $t1, 1($t0)
-    li $t1, 't'
-    sb $t1, 2($t0)
-    li $t1, '.'
-    sb $t1, 3($t0)
-    li $t1, 't'
-    sb $t1, 4($t0)
-    li $t1, 'x'
-    sb $t1, 5($t0)
-    li $t1, 't'
-    sb $t1, 6($t0)
-    sb $zero, 7($t0)
-    
+    la $a0, output_filename_txt
+    jal prompt_output_folder
+    move $a0, $v0
+    move $t9, $s6 # Restaurar tamanho
     jal write_file
     
     li $v0, 4
@@ -460,9 +453,7 @@ opt_exit:
     li $v0, 10
     syscall
 
-# --------------------------------------------------------------------------------------------------
 # FUNCOES AUXILIARES
-# --------------------------------------------------------------------------------------------------
 
 # Funcao: count_frequencies
 # Argumentos: $a0 = tamanho do buffer
@@ -561,10 +552,155 @@ read_err:
     li $v0, -1
     jr $ra
 
+    jr $ra
+
+# Funcao: prompt_output_folder
+# Argumento: $a0 = nome do arquivo padrao (ex: out.huff)
+# Saida: Retorna em $v0 o endereco do caminho completo (output_path_buffer)
+prompt_output_folder:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    move $t9, $a0 # Salvar nome do arquivo
+    
+    # 1. Solicitar Pasta
+    li $v0, 4
+    la $a0, str_input_folder
+    syscall
+    
+    # 2. Ler String
+    li $v0, 8
+    la $a0, output_path_buffer
+    li $a1, 255
+    syscall
+    
+    # 3. Remover Newline e verificar se vazio
+    la $t0, output_path_buffer
+    li $t1, 0 # comprimento
+    
+check_nl_folder:
+    lb $t2, 0($t0)
+    beq $t2, 10, found_nl_folder # \n
+    beq $t2, 0, found_null_folder
+    addi $t0, $t0, 1
+    addi $t1, $t1, 1
+    j check_nl_folder
+    
+found_nl_folder:
+    sb $zero, 0($t0) # Substituir \n por \0
+    
+found_null_folder:
+    # Se comprimento == 0 (apenas enter), tentar usar diretorio do arquivo de entrada
+    beqz $t1, try_smart_default
+    
+    # Caso contrario, verificar se termina com barra
+    addi $t0, $t0, -1
+    lb $t2, 0($t0)
+    li $t3, '\\'
+    li $t4, '/'
+    beq $t2, $t3, append_name
+    beq $t2, $t4, append_name
+    
+    # Adicionar barra se necessario
+    addi $t0, $t0, 1
+    sb $t3, 0($t0) # Adicionar '\'
+    
+append_name:
+    addi $t0, $t0, 1 # Mover para proxima posicao livre
+    move $t5, $t9    # Endereco do nome do arquivo
+    
+loop_append:
+    lb $t6, 0($t5)
+    beqz $t6, end_append
+    sb $t6, 0($t0)
+    addi $t0, $t0, 1
+    addi $t5, $t5, 1
+    j loop_append
+    
+end_append:
+    sb $zero, 0($t0) # Terminar string
+    la $v0, output_path_buffer
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+    
+try_smart_default:
+    # Verificar se filename_buffer tem um caminho (slashes)
+    la $t0, filename_buffer
+    li $t2, 0 # Indice atual
+    li $t3, -1 # Posicao da ultima barra
+    
+find_slash_loop:
+    lb $t4, 0($t0)
+    beqz $t4, check_smart_found
+    
+    li $t5, '\\'
+    li $t6, '/'
+    beq $t4, $t5, mark_slash
+    beq $t4, $t6, mark_slash
+    j next_slash_char
+    
+mark_slash:
+    move $t3, $t2 # Atualizar pos da ultima barra
+    
+next_slash_char:
+    addi $t0, $t0, 1
+    addi $t2, $t2, 1
+    j find_slash_loop
+
+check_smart_found:
+    li $t5, -1
+    beq $t3, $t5, use_simple_default # Nenhuma barra encontrada
+    
+    # Barra encontrada em indice $t3. Copiar ate $t3 (inclusive) para output_path_buffer
+    la $t0, filename_buffer
+    la $t1, output_path_buffer
+    li $t2, 0 # contador
+    addi $t3, $t3, 1 # Tamanho para copiar (indice + 1)
+    
+copy_smart_path:
+    beq $t2, $t3, append_smart_filename
+    lb $t4, 0($t0)
+    sb $t4, 0($t1)
+    addi $t0, $t0, 1
+    addi $t1, $t1, 1
+    addi $t2, $t2, 1
+    j copy_smart_path
+
+append_smart_filename:
+    # Anexar nome padrao $t9
+    move $t5, $t9
+copy_smart_name_loop:
+    lb $t4, 0($t5)
+    beqz $t4, end_smart_build
+    sb $t4, 0($t1)
+    addi $t1, $t1, 1
+    addi $t5, $t5, 1
+    j copy_smart_name_loop
+    
+end_smart_build:
+    sb $zero, 0($t1)
+    la $v0, output_path_buffer
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+use_simple_default:
+    # Se usuario nao digitou pasta e nao achamos caminho no input, usa so o nome
+    move $v0, $t9 
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
 write_file:
+    move $t0, $a0 # Save filename buffer address
+    
     # Abrir Arquivo (Syscall 13) - Write mode
     li $v0, 13
-    la $a0, output_filename # Precisa ser definido
+    move $a0, $t0   # Restore filename
     li $a1, 1    # Write mode
     li $a2, 0
     syscall
@@ -585,9 +721,13 @@ write_file:
     syscall
     
     jr $ra
-
+    
 write_err:
+    li $v0, 4
+    la $a0, str_err_write
+    syscall
     jr $ra
+
 
 # Funcao: build_huffman_tree
 # Saida: Constroi a arvore no array 'nodes'
@@ -604,9 +744,9 @@ build_huffman_tree:
     
     # Logica:
     # Loop N-1 vezes (onde N e o numero de simbolos ativos)
-    #   Encontrar dois nos ativos com as menores frequencias que nao tem pai ainda.
-    #   Criar novo no pai.
-    #   Atualizar seus pais.
+    # Encontrar dois nos ativos com as menores frequencias que nao tem pai ainda.
+    # Criar novo no pai.
+    # Atualizar seus pais.
     
     jal construct_tree_loop
     
